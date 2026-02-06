@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sse-starlette
+sqlalchemy[asyncio]
+aiosqlite
+openai
+python-multipart
+python-dotenv
+pydantic
+pydantic-settings
+httpx

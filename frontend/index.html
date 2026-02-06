@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>统一模型评测平台</title>
+
+    <!-- Google Fonts 国内镜像: Inter + Noto Sans SC -->
+    <link rel="preconnect" href="https://fonts.loli.net" crossorigin>
+    <link href="https://fonts.loli.net/css2?family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- Material Symbols Outlined 国内镜像 -->
+    <link href="https://fonts.loli.net/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+
+    <!-- Chart.js 国内镜像 -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+    <!-- 应用样式 -->
+    <link rel="stylesheet" href="/css/app.css?v=2">
+</head>
+<body>
+    <!-- 顶部应用栏 -->
+    <header class="top-app-bar">
+        <div class="top-app-bar__leading">
+            <span class="material-symbols-outlined top-app-bar__icon">science</span>
+            <h1 class="top-app-bar__title">统一模型评测平台</h1>
+        </div>
+        <div class="top-app-bar__trailing">
+            <button class="icon-button" id="btn-settings" title="设置">
+                <span class="material-symbols-outlined">settings</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- 主体区域 -->
+    <div class="app-layout">
+        <!-- 侧边导航栏 Navigation Rail -->
+        <nav class="nav-rail" id="nav-rail">
+            <!-- 动态渲染 -->
+        </nav>
+
+        <!-- 主内容区 -->
+        <main class="main-content" id="main-content">
+            <!-- 页面由路由动态加载 -->
+            <div class="page-loading">
+                <div class="skeleton skeleton--title"></div>
+                <div class="skeleton skeleton--block"></div>
+                <div class="skeleton skeleton--block"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast 容器 -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- 应用入口 -->
+    <script type="module" src="/js/app.js?v=2"></script>
+</body>
+</html>

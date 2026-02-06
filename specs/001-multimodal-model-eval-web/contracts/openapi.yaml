@@ -1,0 +1,822 @@
+openapi: 3.1.0
+info:
+  title: 统一多模态模型评测平台 API
+  version: 1.0.0
+  description: 用于多模态模型评测的后端 API 接口
+
+servers:
+  - url: http://localhost:8000/api
+    description: 本地开发服务器
+
+tags:
+  - name: models
+    description: 模型配置管理
+  - name: inference
+    description: 模型推理（单次测试）
+  - name: comparison
+    description: 模型对比
+  - name: batch
+    description: 关键词批量测试
+  - name: history
+    description: 历史记录
+  - name: statistics
+    description: 数据报表与统计
+  - name: autocomplete
+    description: AI 自动补全
+  - name: files
+    description: 文件上传
+  - name: settings
+    description: 用户设置
+
+paths:
+  # ========== 模型配置 ==========
+  /models:
+    get:
+      tags: [models]
+      summary: 获取可用模型列表
+      operationId: listModels
+      responses:
+        "200":
+          description: 模型列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  models:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ModelConfig"
+
+  /models/{model_id}:
+    get:
+      tags: [models]
+      summary: 获取单个模型详情
+      operationId: getModel
+      parameters:
+        - name: model_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: 模型详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelConfig"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ========== 文件上传 ==========
+  /files/upload:
+    post:
+      tags: [files]
+      summary: 上传媒体文件（图片/视频/音频）
+      operationId: uploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 上传的媒体文件
+      responses:
+        "200":
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadedFile"
+        "400":
+          description: 文件格式或大小不符合要求
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: 文件超过大小限制
+
+  # ========== 单次推理 ==========
+  /inference:
+    post:
+      tags: [inference]
+      summary: 发起单次模型推理请求（流式 SSE 响应）
+      operationId: createInference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InferenceRequest"
+      responses:
+        "200":
+          description: 流式 SSE 响应
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  SSE 事件流，事件类型:
+                  - event: token — data 为 {"text": "增量文本"}
+                  - event: audio — data 为 {"audio_url": "音频文件URL"}
+                  - event: usage — data 为 {"input_tokens": N, "output_tokens": N}
+                  - event: done — data 为 {"record_id": "UUID", "response_time_ms": N}
+                  - event: error — data 为 {"message": "错误描述"}
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "408":
+          description: 请求超时（60 秒）
+
+  # ========== 模型对比 ==========
+  /comparison:
+    post:
+      tags: [comparison]
+      summary: 发起双模型对比测试（流式 SSE 响应）
+      operationId: createComparison
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComparisonRequest"
+      responses:
+        "200":
+          description: 流式 SSE 响应
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  SSE 事件流，事件类型:
+                  - event: token — data 为 {"group": 0|1, "text": "增量文本"}
+                  - event: audio — data 为 {"group": 0|1, "audio_url": "URL"}
+                  - event: usage — data 为 {"group": 0|1, "input_tokens": N, "output_tokens": N}
+                  - event: done — data 为 {"session_id": "UUID", "groups": [{...}, {...}]}
+                  - event: error — data 为 {"group": 0|1, "message": "错误描述"}
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  # ========== 批量测试 ==========
+  /batch:
+    post:
+      tags: [batch]
+      summary: 创建关键词批量测试任务
+      operationId: createBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchRequest"
+      responses:
+        "201":
+          description: 批量任务已创建
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeywordBatch"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /batch/{batch_id}:
+    get:
+      tags: [batch]
+      summary: 获取批量测试任务状态和结果
+      operationId: getBatch
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: 批量任务详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /batch/{batch_id}/stream:
+    get:
+      tags: [batch]
+      summary: 流式获取批量测试进度（SSE）
+      operationId: streamBatch
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: 流式 SSE 进度事件
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  SSE 事件流:
+                  - event: progress — data 为 {"completed": N, "total": N, "current_keyword": "..."}
+                  - event: result — data 为 {"keyword": "...", "output": "...", "status": "success|failed"}
+                  - event: done — data 为 {"batch_id": "UUID", "completed": N, "failed": N}
+
+  /batch/{batch_id}/export:
+    get:
+      tags: [batch]
+      summary: 导出批量测试结果
+      operationId: exportBatch
+      parameters:
+        - name: batch_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [csv, json]
+            default: csv
+      responses:
+        "200":
+          description: 导出文件
+          content:
+            text/csv:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  # ========== 历史记录 ==========
+  /history:
+    get:
+      tags: [history]
+      summary: 获取历史测试记录列表
+      operationId: listHistory
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: model_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: 按模型筛选
+        - name: keyword
+          in: query
+          schema:
+            type: string
+          description: 关键字搜索（匹配输入/输出文本）
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: 开始日期
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: 结束日期
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [success, failed, timeout]
+      responses:
+        "200":
+          description: 历史记录分页列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryList"
+
+  /history/{record_id}:
+    get:
+      tags: [history]
+      summary: 获取单条历史记录详情
+      operationId: getHistoryDetail
+      parameters:
+        - name: record_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: 记录详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestRecordDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [history]
+      summary: 删除单条历史记录
+      operationId: deleteHistoryRecord
+      parameters:
+        - name: record_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: 删除成功
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /history/batch-delete:
+    post:
+      tags: [history]
+      summary: 批量删除历史记录
+      operationId: batchDeleteHistory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                record_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: 要删除的记录 ID 列表
+                delete_all:
+                  type: boolean
+                  default: false
+                  description: 是否删除全部记录
+      responses:
+        "200":
+          description: 删除结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted_count:
+                    type: integer
+
+  # ========== 数据统计 ==========
+  /statistics/overview:
+    get:
+      tags: [statistics]
+      summary: 获取总览统计数据
+      operationId: getOverview
+      responses:
+        "200":
+          description: 总览统计
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewStats"
+
+  /statistics/usage:
+    get:
+      tags: [statistics]
+      summary: 获取用量分布数据（按模型/时间段）
+      operationId: getUsageStats
+      parameters:
+        - name: group_by
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [model, day, week, month]
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: 用量分布数据
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageStats"
+
+  # ========== AI 自动补全 ==========
+  /autocomplete:
+    post:
+      tags: [autocomplete]
+      summary: 获取 AI 自动补全建议
+      operationId: getAutocomplete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  description: 当前输入文本
+                max_suggestions:
+                  type: integer
+                  default: 3
+                  minimum: 1
+                  maximum: 5
+      responses:
+        "200":
+          description: 补全建议列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      type: string
+                    description: 补全建议文本列表
+
+  # ========== 用户设置 ==========
+  /settings/api-key:
+    post:
+      tags: [settings]
+      summary: 设置用户自定义 API Key（覆盖服务端默认）
+      operationId: setApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [api_key]
+              properties:
+                api_key:
+                  type: string
+                  description: 阿里云 DashScope API Key
+      responses:
+        "200":
+          description: 设置成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  masked_key:
+                    type: string
+                    description: 脱敏后的 Key（如 sk-****1234）
+
+    delete:
+      tags: [settings]
+      summary: 清除用户自定义 API Key（恢复使用服务端默认）
+      operationId: clearApiKey
+      responses:
+        "200":
+          description: 清除成功
+
+components:
+  schemas:
+    # ========== 请求模型 ==========
+    InferenceRequest:
+      type: object
+      required: [model_config_id]
+      properties:
+        model_config_id:
+          type: string
+          format: uuid
+          description: 模型配置 ID
+        text:
+          type: string
+          description: 文本输入
+        file_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: 已上传文件的 ID 列表
+        params:
+          type: object
+          description: 自定义模型参数（覆盖默认值）
+          properties:
+            temperature:
+              type: number
+              minimum: 0
+              maximum: 2
+            max_tokens:
+              type: integer
+              minimum: 1
+            top_p:
+              type: number
+              minimum: 0
+              maximum: 1
+
+    ComparisonRequest:
+      type: object
+      required: [groups]
+      properties:
+        text:
+          type: string
+          description: 共用的文本输入
+        file_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: 共用的已上传文件 ID 列表
+        groups:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: object
+            required: [model_config_id]
+            properties:
+              model_config_id:
+                type: string
+                format: uuid
+              params:
+                type: object
+                description: 本组自定义参数
+
+    BatchRequest:
+      type: object
+      required: [model_config_id, keywords, prompt_template]
+      properties:
+        model_config_id:
+          type: string
+          format: uuid
+        keywords:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 200
+          description: 关键词列表
+        prompt_template:
+          type: string
+          description: 提示词模板，使用 {keyword} 作为占位符
+        params:
+          type: object
+          description: 自定义模型参数
+
+    # ========== 响应模型 ==========
+    ModelConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        model_id:
+          type: string
+        provider:
+          type: string
+        supported_modalities:
+          type: array
+          items:
+            type: string
+            enum: [text, image, video, audio]
+        default_params:
+          type: object
+        is_active:
+          type: boolean
+
+    UploadedFile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        file_name:
+          type: string
+        file_size:
+          type: integer
+        mime_type:
+          type: string
+        modality:
+          type: string
+          enum: [image, video, audio]
+        preview_url:
+          type: string
+          description: 文件预览 URL
+
+    KeywordBatch:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, running, completed, cancelled]
+        total_count:
+          type: integer
+        completed_count:
+          type: integer
+        failed_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    BatchDetail:
+      allOf:
+        - $ref: "#/components/schemas/KeywordBatch"
+        - type: object
+          properties:
+            keywords:
+              type: array
+              items:
+                type: string
+            prompt_template:
+              type: string
+            results:
+              type: array
+              items:
+                type: object
+                properties:
+                  keyword:
+                    type: string
+                  output:
+                    type: string
+                  status:
+                    type: string
+                    enum: [success, failed, pending]
+                  token_input:
+                    type: integer
+                  token_output:
+                    type: integer
+                  error_message:
+                    type: string
+
+    TestRecordDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        model:
+          $ref: "#/components/schemas/ModelConfig"
+        input:
+          type: object
+          properties:
+            text:
+              type: string
+            files:
+              type: array
+              items:
+                $ref: "#/components/schemas/UploadedFile"
+        output_text:
+          type: string
+        output_audio_url:
+          type: string
+        params:
+          type: object
+        token_input:
+          type: integer
+        token_output:
+          type: integer
+        response_time_ms:
+          type: integer
+        status:
+          type: string
+        error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    HistoryList:
+      type: object
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        records:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              model_name:
+                type: string
+              input_summary:
+                type: string
+                description: 输入内容摘要（截断至 100 字符）
+              output_summary:
+                type: string
+                description: 输出内容摘要（截断至 100 字符）
+              modalities:
+                type: array
+                items:
+                  type: string
+              token_total:
+                type: integer
+              status:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+
+    OverviewStats:
+      type: object
+      properties:
+        total_tests:
+          type: integer
+        total_tokens_input:
+          type: integer
+        total_tokens_output:
+          type: integer
+        total_tokens:
+          type: integer
+        models_used:
+          type: integer
+        avg_response_time_ms:
+          type: number
+
+    UsageStats:
+      type: object
+      properties:
+        group_by:
+          type: string
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+                description: 分组标签（模型名/日期）
+              test_count:
+                type: integer
+              token_input:
+                type: integer
+              token_output:
+                type: integer
+              avg_response_time_ms:
+                type: number
+
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+        code:
+          type: string
+
+  responses:
+    NotFound:
+      description: 资源未找到
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
