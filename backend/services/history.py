@@ -165,5 +165,6 @@ def _format_record_detail(record: TestRecord) -> dict:
         "response_time_ms": record.response_time_ms,
         "status": record.status.value if hasattr(record.status, 'value') else record.status,
         "error_message": record.error_message,
+        "raw_response": record.raw_response,
         "created_at": record.created_at.isoformat() if record.created_at else None,
     }

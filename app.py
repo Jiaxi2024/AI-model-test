@@ -98,8 +98,7 @@ if __name__ == "__main__":
     print(f"[*] 访问地址: http://localhost:{PORT}")
     print(f"[*] API 文档: http://localhost:{PORT}/docs")
     uvicorn.run(
-        "app:app",
+        app,
         host=HOST,
         port=PORT,
-        reload=DEBUG,
     )

@@ -1,5 +1,6 @@
 """单次推理服务：接收多模态输入、构建 API 请求、流式调用模型、保存 TestRecord"""
 
+import json
 from typing import AsyncGenerator
 
 from sqlalchemy import select
@@ -39,7 +40,11 @@ async def run_inference(
         yield ("error", {"message": "模型配置未找到"})
         return
 
-    # 2. 处理输入内容 — 将本地文件转为 base64 data URL 供模型 API 使用
+    # 2. 解析自定义模型的 base_url / api_key
+    custom_base_url = model_config.custom_base_url if model_config.is_custom else None
+    custom_api_key = model_config.custom_api_key if model_config.is_custom else None
+
+    # 3. 处理输入内容 — 将本地文件转为 base64 data URL 供模型 API 使用
     file_urls = []
     if file_ids:
         for fid in file_ids:
@@ -56,7 +61,7 @@ async def run_inference(
                     "mime_type": uploaded.mime_type,
                 })
 
-    # 3. 创建 TestInput
+    # 4. 创建 TestInput
     test_input = TestInput(
         text_content=text,
         input_type=InputType.SINGLE,
@@ -64,7 +69,7 @@ async def run_inference(
     db.add(test_input)
     await db.flush()
 
-    # 4. 创建 TestRecord (pending)
+    # 5. 创建 TestRecord (pending)
     merged_params = {**model_config.default_params, **(params or {})}
     test_record = TestRecord(
         model_config_id=model_config_id,
@@ -76,11 +81,11 @@ async def run_inference(
     db.add(test_record)
     await db.flush()
 
-    # 5. 更新状态为 running
+    # 6. 更新状态为 running
     test_record.status = RecordStatus.RUNNING
     await db.flush()
 
-    # 6. 构建 messages 并调用模型
+    # 7. 构建 messages 并调用模型
     messages = build_messages(text=text, file_urls=file_urls if file_urls else None)
 
     full_text = ""
@@ -93,6 +98,8 @@ async def run_inference(
             model_id=model_config.model_id,
             messages=messages,
             params=merged_params,
+            api_key=custom_api_key,
+            base_url=custom_base_url,
         ):
             event_type = event.get("type")
 
@@ -113,12 +120,22 @@ async def run_inference(
 
             elif event_type == "done":
                 response_time_ms = event.get("response_time_ms", 0)
+                raw_chunks = event.get("raw_chunks")
+
                 # 更新记录
                 test_record.output_text = full_text
                 test_record.token_input = input_tokens
                 test_record.token_output = output_tokens
                 test_record.response_time_ms = response_time_ms
                 test_record.status = RecordStatus.SUCCESS
+
+                # 保留 raw 原始返回（调试用）
+                if raw_chunks:
+                    try:
+                        test_record.raw_response = json.dumps(raw_chunks, ensure_ascii=False)
+                    except Exception:
+                        pass
+
                 await db.flush()
 
                 yield ("done", {

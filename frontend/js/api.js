@@ -206,6 +206,10 @@ function _dispatchSSEEvent(eventType, eventData, handlers) {
 export const models = {
   list: () => get('/models'),
   get: (id) => get(`/models/${id}`),
+  create: (data) => post('/models', data),
+  update: (id, data) => request(`/models/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  remove: (id) => del(`/models/${id}`),
+  testConnection: (data) => post('/models/test-connection', data),
 };
 
 export const inference = {
