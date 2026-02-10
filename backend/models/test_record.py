@@ -54,6 +54,7 @@ class TestRecord(BaseModel):
         comment="状态",
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True, comment="失败时的错误信息")
+    raw_response: Mapped[str | None] = mapped_column(Text, nullable=True, comment="模型原始返回（JSON 字符串，调试用）")
     keyword_batch_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("keyword_batches.id"),

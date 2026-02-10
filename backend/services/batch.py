@@ -148,6 +148,10 @@ async def stream_batch(
         db.add(record)
         await db.flush()
 
+        # 解析自定义模型参数
+        custom_base = model_config.custom_base_url if model_config.is_custom else None
+        custom_key = model_config.custom_api_key if model_config.is_custom else None
+
         # 调用模型
         full_text = ""
         try:
@@ -156,6 +160,8 @@ async def stream_batch(
                 model_id=model_config.model_id,
                 messages=messages,
                 params=merged_params,
+                api_key=custom_key,
+                base_url=custom_base,
             ):
                 if event["type"] == "token":
                     full_text += event["text"]

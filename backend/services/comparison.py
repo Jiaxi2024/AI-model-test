@@ -1,6 +1,7 @@
 """模型对比服务：并行调用两组模型 API、合并 SSE 流"""
 
 import asyncio
+import json
 from typing import AsyncGenerator
 
 from sqlalchemy import select
@@ -107,11 +108,17 @@ async def run_comparison(
 
     async def stream_group(group_idx, model_config, params, record):
         full_text = ""
+        # 解析自定义模型参数
+        custom_base = model_config.custom_base_url if model_config.is_custom else None
+        custom_key = model_config.custom_api_key if model_config.is_custom else None
+
         try:
             async for event in stream_chat_completion(
                 model_id=model_config.model_id,
                 messages=messages,
                 params=params,
+                api_key=custom_key,
+                base_url=custom_base,
             ):
                 event["group"] = group_idx
                 if event["type"] == "token":
@@ -161,6 +168,13 @@ async def run_comparison(
             })
         elif event_type == "done":
             records[group].response_time_ms = event.get("response_time_ms", 0)
+            # 保留 raw 原始返回
+            raw_chunks = event.get("raw_chunks")
+            if raw_chunks:
+                try:
+                    records[group].raw_response = json.dumps(raw_chunks, ensure_ascii=False)
+                except Exception:
+                    pass
         elif event_type == "error":
             yield ("error", {"group": group, "message": event["message"]})
 
